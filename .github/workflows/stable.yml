@@ -48,14 +48,58 @@ jobs:
         run: |
           curl -L ${{ inputs.discord_ipa_url }} -o ${{ github.workspace }}/Discord.ipa
 
+      - name: Retrieve version
+        id: version
+        run: echo "__ENMITY_VERSION=$(cat control | grep -E 'Version:(.*)' | awk '{ print $2 }')" >> $GITHUB_OUTPUT
+
+      # Build debs before patching the IPA
+      - name: Build deb
+        run: |
+          rm -f packages/*
+          gmake clean package FINALPACKAGE=1
+          mv $(find packages -name "*.deb" -print -quit) out/Enmity.deb
+
+      - name: Build dev deb
+        run: |
+          rm -f packages/*
+          echo $"$(sed 's/Name\:.*/Name\: Enmity (Dev)/' control)" > control
+          echo $"$(sed 's/Package\:.*/Package\: app.enmity.dev/' control)" > control
+          gmake clean package FINALPACKAGE=1 DEVTOOLS=1
+          mv $(find packages -name "*.deb" -print -quit) out/Enmity.Development.deb
+
+      - name: Build deb with the sideload fix
+        run: |
+          rm -f packages/*
+          gmake clean package FINALPACKAGE=1 SIDELOAD=1
+          mv $(find packages -name "*.deb" -print -quit) out/Enmity.Sideload.deb
+
+      - name: Build dev deb with the sideload fix
+        run: |
+          rm -f packages/*
+          echo $"$(sed 's/Name\:.*/Name\: Enmity (Dev)/' control)" > control
+          echo $"$(sed 's/Package\:.*/Package\: app.enmity.dev/' control)" > control
+          gmake clean package FINALPACKAGE=1 DEVTOOLS=1 SIDELOAD=1
+          mv $(find packages -name "*.deb" -print -quit) out/Enmity.Sideload.Development.deb
+
+      - name: Build rootless deb
+        run: |
+          rm -f packages/*
+          gmake clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          mv $(find packages -name "*.deb" -print -quit) out/Enmity.Rootless.deb
+
+      - name: Build dev rootless deb
+        run: |
+          rm -f packages/*
+          echo $"$(sed 's/Name\:.*/Name\: Enmity (Dev)/' control)" > control
+          echo $"$(sed 's/Package\:.*/Package\: app.enmity.dev/' control)" > control
+          gmake clean package FINALPACKAGE=1 DEVTOOLS=1 THEOS_PACKAGE_SCHEME=rootless
+          mv $(find packages -name "*.deb" -print -quit) out/Enmity.Rootless.Development.deb
+
+      # Patch the Discord IPA after DEBs are built
       - name: Patch Discord
         run: |
           ${{ github.workspace }}/patcher ${{ github.workspace }}/Discord.ipa
           mkdir out
-
-      - name: Retrieve version
-        id: version
-        run: echo "__ENMITY_VERSION=$(cat control | grep -E 'Version:(.*)' | awk '{ print $2 }')" >> $GITHUB_OUTPUT
 
       - name: Create Enmity.ipa
         run: |
@@ -67,14 +111,12 @@ jobs:
           ${{ github.workspace }}/Azule/azule -U -i Enmity.ipa -o out -f out/Enmity.Sideload.Development.deb
           mv out/Enmity+Enmity.Sideload.Development.deb.ipa out/Enmity.Development.ipa
 
-      - name: Upload Enmity.ipa as artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: Enmity-ipa
-          path: out/Enmity.ipa
+      - name: Zip all build artifacts
+        run: |
+          zip -r out/Enmity_Build_Artifacts.zip out/*.deb out/Enmity.ipa out/Enmity.Development.ipa
 
-      - name: Upload Enmity.Development.ipa as artifact
+      - name: Upload zipped artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: Enmity-Development-ipa
-          path: out/Enmity.Development.ipa
+          name: Enmity-Build-Artifacts
+          path: out/Enmity_Build_Artifacts.zip
